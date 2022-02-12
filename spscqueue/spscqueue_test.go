@@ -1,6 +1,7 @@
 package spscqueue
 
 import (
+	"runtime"
 	"sync"
 	"testing"
 )
@@ -121,6 +122,96 @@ func TestPutGetSPSC(t *testing.T) {
 			q.Advance()
 		}
 	}(&wg)
+
+	wg.Wait()
+}
+
+func BenchmarkPutGet(b *testing.B) {
+	q := New[int](1)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		q.Put(i)
+		_ = q.Poll()
+		q.Advance()
+	}
+}
+
+func BenchmarkChannelPutGet(b *testing.B) {
+	q := make(chan int, 1)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		q <- i
+		_ = <-q
+	}
+}
+
+func BenchmarkPutGetSPSC(b *testing.B) {
+	q := New[int](1024)
+	start := make(chan struct{})
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		defer wg.Done()
+		<-start
+		for i := 0; i < b.N; i++ {
+			q.Put(i)
+		}
+	}(&wg)
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		defer wg.Done()
+		<-start
+		for i := 0; i < b.N; i++ {
+			_ = q.Poll()
+			q.Advance()
+		}
+	}(&wg)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	close(start)
+
+	wg.Wait()
+}
+
+func BenchmarkChannelPutGetSPSC(b *testing.B) {
+	q := make(chan int, 1024)
+	start := make(chan struct{})
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		defer wg.Done()
+		<-start
+		for i := 0; i < b.N; i++ {
+			q <- i
+		}
+	}(&wg)
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		defer wg.Done()
+		<-start
+		for i := 0; i < b.N; i++ {
+			_ = <-q
+		}
+	}(&wg)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	close(start)
 
 	wg.Wait()
 }
