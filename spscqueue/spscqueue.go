@@ -1,16 +1,25 @@
 package spscqueue
 
 import (
+	"golang.org/x/sys/cpu"
 	"runtime"
 	"sync/atomic"
 )
 
+// Queue is the structure responsible for tracking the state of the bounded single-producer
+// single-consumer queue.
 type Queue[T any] struct {
+	// Relevant struct elements are spaced out to separate cache lines, so as to prevent false
+	// sharing/cache line invalidation.
+	_          cpu.CacheLinePad
 	items      []T
+	_          cpu.CacheLinePad
 	rIdx       uint64
 	wIdxCached uint64
+	_          cpu.CacheLinePad
 	wIdx       uint64
 	rIdxCached uint64
+	_          cpu.CacheLinePad
 }
 
 // New[T any] returns an empty single-producer single-consumer bounded queue. The queue has capacity
