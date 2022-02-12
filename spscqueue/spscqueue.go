@@ -6,9 +6,11 @@ import (
 )
 
 type Queue[T any] struct {
-	items []T
-	rIdx  uint64
-	wIdx  uint64
+	items      []T
+	rIdx       uint64
+	wIdxCached uint64
+	wIdx       uint64
+	rIdxCached uint64
 }
 
 // New[T any] returns an empty single-producer single-consumer bounded queue. The queue has capacity
@@ -26,10 +28,9 @@ func (q *Queue[T]) Put(el T) {
 	}
 
 	// Wait if we ran into the consumer.
-	rIdx := atomic.LoadUint64(&q.rIdx)
-	for wIdxNext == rIdx {
+	for wIdxNext == q.rIdxCached {
 		runtime.Gosched()
-		rIdx = atomic.LoadUint64(&q.rIdx)
+		q.rIdxCached = atomic.LoadUint64(&q.rIdx)
 	}
 	q.items[q.wIdx] = el
 	// Set atomically, otherwise consumer may read an intermediate result of setting the value.
@@ -40,11 +41,10 @@ func (q *Queue[T]) Put(el T) {
 // Subsequent calls to Poll without a call to Advance will return the same element.
 func (q *Queue[T]) Poll() T {
 	// Wait for an item to be available.
-	wIdx := atomic.LoadUint64(&q.wIdx)
-	// Consumer if the only writer of q.rIdx, so it can read it without atomics.
-	for q.rIdx == wIdx {
+	// Consumer is the only writer of q.rIdx, so it can read it without atomics.
+	for q.rIdx == q.wIdxCached {
 		runtime.Gosched()
-		wIdx = atomic.LoadUint64(&q.wIdx)
+		q.wIdxCached = atomic.LoadUint64(&q.wIdx)
 	}
 
 	return q.items[q.rIdx]
