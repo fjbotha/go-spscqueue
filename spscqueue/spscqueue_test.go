@@ -2,6 +2,7 @@ package spscqueue
 
 import (
 	"runtime"
+	"strconv"
 	"sync"
 	"testing"
 )
@@ -156,6 +157,35 @@ func TestOfferPeekSPSC(t *testing.T) {
 				v, ok = q.Peek()
 			}
 			if v != i {
+				t.Errorf("Got incorrect value; %v != %v", v, i)
+			}
+			q.Advance()
+		}
+	}(&wg)
+
+	wg.Wait()
+}
+
+// SPSC test for a string type.
+func TestString(t *testing.T) {
+	const numItems = 10000
+	q := New[string](64)
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		for i := 0; i < numItems; i++ {
+			q.Put(strconv.Itoa(i))
+		}
+	}(&wg)
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		for i := 0; i < numItems; i++ {
+			v := q.Poll()
+			if v != strconv.Itoa(i) {
 				t.Errorf("Got incorrect value; %v != %v", v, i)
 			}
 			q.Advance()
