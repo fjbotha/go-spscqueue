@@ -36,9 +36,12 @@ func (q *Queue[T]) Put(el T) {
 	}
 
 	// Wait if we ran into the consumer.
-	for wIdxNext == q.rIdxCached {
-		runtime.Gosched()
+	if wIdxNext == q.rIdxCached {
 		q.rIdxCached = atomic.LoadUint64(&q.rIdx)
+		for wIdxNext == q.rIdxCached {
+			runtime.Gosched()
+			q.rIdxCached = atomic.LoadUint64(&q.rIdx)
+		}
 	}
 	q.items[q.wIdx] = el
 	atomic.StoreUint64(&q.wIdx, wIdxNext)
@@ -68,9 +71,12 @@ func (q *Queue[T]) Offer(el T) bool {
 // Subsequent calls to Poll without a call to Advance will return the same element.
 func (q *Queue[T]) Poll() T {
 	// Wait for an item to be available.
-	for q.rIdx == q.wIdxCached {
-		runtime.Gosched()
+	if q.rIdx == q.wIdxCached {
 		q.wIdxCached = atomic.LoadUint64(&q.wIdx)
+		for q.rIdx == q.wIdxCached {
+			runtime.Gosched()
+			q.wIdxCached = atomic.LoadUint64(&q.wIdx)
+		}
 	}
 
 	return q.items[q.rIdx]
