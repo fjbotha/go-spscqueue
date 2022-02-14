@@ -53,6 +53,7 @@ func TestLength(t *testing.T) {
 	}
 }
 
+// Single threaded test.
 func TestPutGet(t *testing.T) {
 	q := New[int](8)
 
@@ -79,25 +80,23 @@ func TestPutGet(t *testing.T) {
 		}
 		q.Advance()
 	}
-}
 
-func TestPutGetLarge(t *testing.T) {
-	const numItems = 8000
-	q := New[int](numItems)
-
-	for i := 0; i < numItems; i++ {
-		q.Put(i)
+	const bigQSize = 8000
+	bigQ := New[int](bigQSize)
+	for i := 0; i < bigQSize; i++ {
+		bigQ.Put(i)
 	}
 
-	for i := 0; i < numItems; i++ {
-		v := q.Poll()
+	for i := 0; i < bigQSize; i++ {
+		v := bigQ.Poll()
 		if v != i {
 			t.Errorf("Got incorrect value; %v != %v", v, i)
 		}
-		q.Advance()
+		bigQ.Advance()
 	}
 }
 
+// SPSC test.
 func TestPutGetSPSC(t *testing.T) {
 	const numItems = 10000
 	q := New[int](64)
@@ -126,6 +125,7 @@ func TestPutGetSPSC(t *testing.T) {
 	wg.Wait()
 }
 
+// Single threaded benchmark; not the primary usecase.
 func BenchmarkPutGet(b *testing.B) {
 	q := New[int](1)
 	b.ReportAllocs()
@@ -137,6 +137,7 @@ func BenchmarkPutGet(b *testing.B) {
 	}
 }
 
+// Channel reference single threaded benchmark.
 func BenchmarkChannelPutGet(b *testing.B) {
 	q := make(chan int, 1)
 	b.ReportAllocs()
@@ -147,6 +148,7 @@ func BenchmarkChannelPutGet(b *testing.B) {
 	}
 }
 
+// SPSC benchmark.
 func BenchmarkPutGetSPSC(b *testing.B) {
 	q := New[int](1024)
 	start := make(chan struct{})
@@ -182,6 +184,7 @@ func BenchmarkPutGetSPSC(b *testing.B) {
 	wg.Wait()
 }
 
+// Channel reference SPSC benchmark.
 func BenchmarkChannelPutGetSPSC(b *testing.B) {
 	q := make(chan int, 1024)
 	start := make(chan struct{})
