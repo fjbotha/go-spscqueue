@@ -30,7 +30,6 @@ func New[T any](size uint) *Queue[T] {
 
 // Put adds the passed element to the queue. Put will block if the queue is full.
 func (q *Queue[T]) Put(el T) {
-	// Producer is the only writer to q.wIdx, so it can read it without atomics.
 	wIdxNext := q.wIdx + 1
 	if wIdxNext == uint64(len(q.items)) {
 		wIdxNext = 0
@@ -42,15 +41,33 @@ func (q *Queue[T]) Put(el T) {
 		q.rIdxCached = atomic.LoadUint64(&q.rIdx)
 	}
 	q.items[q.wIdx] = el
-	// Set atomically, otherwise consumer may read an intermediate result of setting the value.
 	atomic.StoreUint64(&q.wIdx, wIdxNext)
+}
+
+// Offer adds the passed element to the queue if there is an available slot. Offer returns true if
+// the item was added successfully, otherwise false.
+func (q *Queue[T]) Offer(el T) bool {
+	wIdxNext := q.wIdx + 1
+	if wIdxNext == uint64(len(q.items)) {
+		wIdxNext = 0
+	}
+
+	// Check if we ran into the consumer.
+	if wIdxNext == q.rIdxCached {
+		q.rIdxCached = atomic.LoadUint64(&q.rIdx)
+		if wIdxNext == q.rIdxCached {
+			return false
+		}
+	}
+	q.items[q.wIdx] = el
+	atomic.StoreUint64(&q.wIdx, wIdxNext)
+	return true
 }
 
 // Poll returns the oldest element in the queue. Poll will block if no element is available.
 // Subsequent calls to Poll without a call to Advance will return the same element.
 func (q *Queue[T]) Poll() T {
 	// Wait for an item to be available.
-	// Consumer is the only writer of q.rIdx, so it can read it without atomics.
 	for q.rIdx == q.wIdxCached {
 		runtime.Gosched()
 		q.wIdxCached = atomic.LoadUint64(&q.wIdx)
@@ -59,15 +76,30 @@ func (q *Queue[T]) Poll() T {
 	return q.items[q.rIdx]
 }
 
+// Peek is a non-blocking variant of Poll. It returns the oldest element in the queue if the queue
+// is not empty, otherwise the zero-value for the type. A boolean indicator of success or failure is
+// included as a second return value. Subsequent calls to Peek without a call to Advance will return
+// the same element.
+func (q *Queue[T]) Peek() (T, bool) {
+	// Check if an item is available.
+	if q.rIdx == q.wIdxCached {
+		q.wIdxCached = atomic.LoadUint64(&q.wIdx)
+		if q.rIdx == q.wIdxCached {
+			var t T
+			return t, false
+		}
+	}
+
+	return q.items[q.rIdx], true
+}
+
 // Advance moves the consumer forward. Advance should be called after using the data returned from
-// Poll.
+// Poll/Peek.
 func (q *Queue[T]) Advance() {
-	// Consumer is the only writer of q.rIdx, so it can read it without atomics.
 	rIdxNext := q.rIdx + 1
 	if rIdxNext == uint64(len(q.items)) {
 		rIdxNext = 0
 	}
-	// Set atomically, otherwise producer may read an intermediate result of setting the value.
 	atomic.StoreUint64(&q.rIdx, rIdxNext)
 }
 

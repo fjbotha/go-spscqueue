@@ -125,6 +125,46 @@ func TestPutGetSPSC(t *testing.T) {
 	wg.Wait()
 }
 
+func TestOfferPeekSPSC(t *testing.T) {
+	q := New[int](0)
+
+	if q.Offer(1) == true {
+		t.Error("Managed to add element to empty queue!")
+	}
+
+	const numItems = 10000
+	q = New[int](64)
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		for i := 0; i < numItems; i++ {
+			for q.Offer(i) == false {
+				runtime.Gosched()
+			}
+		}
+	}(&wg)
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		for i := 0; i < numItems; i++ {
+			v, ok := q.Peek()
+			for !ok {
+				runtime.Gosched()
+				v, ok = q.Peek()
+			}
+			if v != i {
+				t.Errorf("Got incorrect value; %v != %v", v, i)
+			}
+			q.Advance()
+		}
+	}(&wg)
+
+	wg.Wait()
+}
+
 // Single threaded benchmark; not the primary usecase.
 func BenchmarkPutGet(b *testing.B) {
 	q := New[int](1)
