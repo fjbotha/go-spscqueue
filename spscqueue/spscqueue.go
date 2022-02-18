@@ -28,8 +28,9 @@ func New[T any](size uint) *Queue[T] {
 	return &Queue[T]{items: make([]T, size+1)}
 }
 
-// Put adds the passed element to the queue. Put will block if the queue is full.
-func (q *Queue[T]) Put(el T) {
+// Push adds the passed element to the queue. Push will block if the queue is full.
+// Push should be called by the producer.
+func (q *Queue[T]) Push(el T) {
 	wIdxNext := q.wIdx + 1
 	if wIdxNext == uint64(len(q.items)) {
 		wIdxNext = 0
@@ -49,6 +50,7 @@ func (q *Queue[T]) Put(el T) {
 
 // Offer adds the passed element to the queue if there is an available slot. Offer returns true if
 // the item was added successfully, otherwise false.
+// Offer should be called by the producer.
 func (q *Queue[T]) Offer(el T) bool {
 	wIdxNext := q.wIdx + 1
 	if wIdxNext == uint64(len(q.items)) {
@@ -67,9 +69,10 @@ func (q *Queue[T]) Offer(el T) bool {
 	return true
 }
 
-// Poll returns the oldest element in the queue. Poll will block if no element is available.
-// Subsequent calls to Poll without a call to Advance will return the same element.
-func (q *Queue[T]) Poll() T {
+// Pop returns the oldest element in the queue and removes it. Pop will block if no element is
+// available.
+// Pop should be called by the consumer.
+func (q *Queue[T]) Pop() T {
 	// Wait for an item to be available.
 	if q.rIdx == q.wIdxCached {
 		q.wIdxCached = atomic.LoadUint64(&q.wIdx)
@@ -79,14 +82,17 @@ func (q *Queue[T]) Poll() T {
 		}
 	}
 
-	return q.items[q.rIdx]
+	ret := q.items[q.rIdx]
+	q.Advance()
+	return ret
 }
 
-// Peek is a non-blocking variant of Poll. It returns the oldest element in the queue if the queue
+// Front is a non-blocking variant of Pop. It returns the oldest element in the queue if the queue
 // is not empty, otherwise the zero-value for the type. A boolean indicator of success or failure is
-// included as a second return value. Subsequent calls to Peek without a call to Advance will return
-// the same element.
-func (q *Queue[T]) Peek() (T, bool) {
+// included as a second return value. Contrary to Pop, subsequent calls to Front without a call to
+// Advance will return the same element.
+// Front should be called by the consumer.
+func (q *Queue[T]) Front() (T, bool) {
 	// Check if an item is available.
 	if q.rIdx == q.wIdxCached {
 		q.wIdxCached = atomic.LoadUint64(&q.wIdx)
@@ -99,8 +105,9 @@ func (q *Queue[T]) Peek() (T, bool) {
 	return q.items[q.rIdx], true
 }
 
-// Advance moves the consumer forward. Advance should be called after using the data returned from
-// Poll/Peek.
+// Advance moves the consumer forward. Advance may be called after using the data returned from
+// Front.
+// Advance should be called by the consumer if and only if it follows a successful call to Front.
 func (q *Queue[T]) Advance() {
 	rIdxNext := q.rIdx + 1
 	if rIdxNext == uint64(len(q.items)) {
@@ -110,6 +117,7 @@ func (q *Queue[T]) Advance() {
 }
 
 // Len returns the number of elements in the queue.
+// Any thread may call Len.
 func (q *Queue[T]) Len() uint64 {
 	rIdx := atomic.LoadUint64(&q.rIdx)
 	wIdx := atomic.LoadUint64(&q.wIdx)

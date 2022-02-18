@@ -12,41 +12,41 @@ func TestLength(t *testing.T) {
 	if l := q.Len(); l != 0 {
 		t.Errorf("Unexpected length; %v != 0", l)
 	}
-	q.Put(1)
+	q.Push(1)
 	if l := q.Len(); l != 1 {
 		t.Errorf("Unexpected length; %v != 1", l)
 	}
-	q.Put(2)
+	q.Push(2)
 	if l := q.Len(); l != 2 {
 		t.Errorf("Unexpected length; %v != 2", l)
 	}
 	for i := 3; i <= 8; i++ {
-		q.Put(i)
+		q.Push(i)
 	}
 	if l := q.Len(); l != 8 {
 		t.Errorf("Unexpected length; %v != 8", l)
 	}
 
-	q.Advance()
+	q.Pop()
 	if l := q.Len(); l != 7 {
 		t.Errorf("Unexpected length; %v != 7", l)
 	}
-	q.Advance()
+	q.Pop()
 	if l := q.Len(); l != 6 {
 		t.Errorf("Unexpected length; %v != 6", l)
 	}
 
-	q.Put(11)
+	q.Push(11)
 	if l := q.Len(); l != 7 {
 		t.Errorf("Unexpected length; %v != 7", l)
 	}
-	q.Put(12)
+	q.Push(12)
 	if l := q.Len(); l != 8 {
 		t.Errorf("Unexpected length; %v != 8", l)
 	}
 
 	for i := 1; i <= 8; i++ {
-		q.Advance()
+		q.Pop()
 		if l := int(q.Len()); l != 8-i {
 			t.Errorf("Unexpected length; %v != %v", l, 8-i)
 			t.Logf("rIdx = %v; wIdx = %v", q.rIdx, q.wIdx)
@@ -55,50 +55,47 @@ func TestLength(t *testing.T) {
 }
 
 // Single threaded test.
-func TestPutGet(t *testing.T) {
+func TestPushPop(t *testing.T) {
 	q := New[int](8)
 
 	for i := 0; i < 8; i++ {
-		q.Put(i)
+		q.Push(i)
 	}
 
 	for i := 0; i < 8; i++ {
-		v := q.Poll()
+		v := q.Pop()
 		if v != i {
 			t.Errorf("Got incorrect value; %v != %v", v, i)
 		}
-		q.Advance()
 	}
 
 	for i := 10; i < 18; i++ {
-		q.Put(i)
+		q.Push(i)
 	}
 
 	for i := 10; i < 18; i++ {
-		v := q.Poll()
+		v := q.Pop()
 		if v != i {
 			t.Errorf("Got incorrect value; %v != %v", v, i)
 		}
-		q.Advance()
 	}
 
 	const bigQSize = 8000
 	bigQ := New[int](bigQSize)
 	for i := 0; i < bigQSize; i++ {
-		bigQ.Put(i)
+		bigQ.Push(i)
 	}
 
 	for i := 0; i < bigQSize; i++ {
-		v := bigQ.Poll()
+		v := bigQ.Pop()
 		if v != i {
 			t.Errorf("Got incorrect value; %v != %v", v, i)
 		}
-		bigQ.Advance()
 	}
 }
 
 // SPSC test.
-func TestPutGetSPSC(t *testing.T) {
+func TestPushPopSPSC(t *testing.T) {
 	const numItems = 10000
 	q := New[int](64)
 	wg := sync.WaitGroup{}
@@ -107,7 +104,7 @@ func TestPutGetSPSC(t *testing.T) {
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		for i := 0; i < numItems; i++ {
-			q.Put(i)
+			q.Push(i)
 		}
 	}(&wg)
 
@@ -115,18 +112,17 @@ func TestPutGetSPSC(t *testing.T) {
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		for i := 0; i < numItems; i++ {
-			v := q.Poll()
+			v := q.Pop()
 			if v != i {
 				t.Errorf("Got incorrect value; %v != %v", v, i)
 			}
-			q.Advance()
 		}
 	}(&wg)
 
 	wg.Wait()
 }
 
-func TestOfferPeekSPSC(t *testing.T) {
+func TestOfferPeekAdvanceSPSC(t *testing.T) {
 	q := New[int](0)
 
 	if q.Offer(1) == true {
@@ -151,10 +147,10 @@ func TestOfferPeekSPSC(t *testing.T) {
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		for i := 0; i < numItems; i++ {
-			v, ok := q.Peek()
+			v, ok := q.Front()
 			for !ok {
 				runtime.Gosched()
-				v, ok = q.Peek()
+				v, ok = q.Front()
 			}
 			if v != i {
 				t.Errorf("Got incorrect value; %v != %v", v, i)
@@ -176,7 +172,7 @@ func TestString(t *testing.T) {
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		for i := 0; i < numItems; i++ {
-			q.Put(strconv.Itoa(i))
+			q.Push(strconv.Itoa(i))
 		}
 	}(&wg)
 
@@ -184,11 +180,10 @@ func TestString(t *testing.T) {
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		for i := 0; i < numItems; i++ {
-			v := q.Poll()
+			v := q.Pop()
 			if v != strconv.Itoa(i) {
 				t.Errorf("Got incorrect value; %v != %v", v, i)
 			}
-			q.Advance()
 		}
 	}(&wg)
 
@@ -196,19 +191,18 @@ func TestString(t *testing.T) {
 }
 
 // Single threaded benchmark; not the primary usecase.
-func BenchmarkPutGet(b *testing.B) {
+func BenchmarkPushPop(b *testing.B) {
 	q := New[int](1)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		q.Put(i)
-		_ = q.Poll()
-		q.Advance()
+		q.Push(i)
+		_ = q.Pop()
 	}
 }
 
 // Channel reference single threaded benchmark.
-func BenchmarkChannelPutGet(b *testing.B) {
+func BenchmarkChannelPushPop(b *testing.B) {
 	q := make(chan int, 1)
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -219,7 +213,7 @@ func BenchmarkChannelPutGet(b *testing.B) {
 }
 
 // SPSC benchmark.
-func BenchmarkPutGetSPSC(b *testing.B) {
+func BenchmarkPushPopSPSC(b *testing.B) {
 	q := New[int](1024)
 	start := make(chan struct{})
 	wg := sync.WaitGroup{}
@@ -231,7 +225,7 @@ func BenchmarkPutGetSPSC(b *testing.B) {
 		defer wg.Done()
 		<-start
 		for i := 0; i < b.N; i++ {
-			q.Put(i)
+			q.Push(i)
 		}
 	}(&wg)
 
@@ -242,7 +236,48 @@ func BenchmarkPutGetSPSC(b *testing.B) {
 		defer wg.Done()
 		<-start
 		for i := 0; i < b.N; i++ {
-			_ = q.Poll()
+			_ = q.Pop()
+		}
+	}(&wg)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	close(start)
+
+	wg.Wait()
+}
+
+// SPSC benchmark.
+func BenchmarkOfferPeekAdvanceSPSC(b *testing.B) {
+	q := New[int](1024)
+	start := make(chan struct{})
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		defer wg.Done()
+		<-start
+		for i := 0; i < b.N; i++ {
+			for q.Offer(i) == false {
+				runtime.Gosched()
+			}
+		}
+	}(&wg)
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		defer wg.Done()
+		<-start
+		for i := 0; i < b.N; i++ {
+			_, ok := q.Front()
+			for !ok {
+				runtime.Gosched()
+				_, ok = q.Front()
+			}
 			q.Advance()
 		}
 	}(&wg)
@@ -255,7 +290,7 @@ func BenchmarkPutGetSPSC(b *testing.B) {
 }
 
 // Channel reference SPSC benchmark.
-func BenchmarkChannelPutGetSPSC(b *testing.B) {
+func BenchmarkChannelPushPopSPSC(b *testing.B) {
 	q := make(chan int, 1024)
 	start := make(chan struct{})
 	wg := sync.WaitGroup{}
