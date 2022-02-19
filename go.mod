@@ -1,4 +1,4 @@
-module fjbotha/go-spscqueue/spscqueue
+module github.com/fjbotha/go-spscqueue
 
 go 1.18
 
