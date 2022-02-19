@@ -73,18 +73,18 @@ func (q *Queue[T]) Offer(el T) bool {
 // available.
 // Pop should be called by the consumer.
 func (q *Queue[T]) Pop() T {
+	defer q.Advance()
 	// Wait for an item to be available.
-	if q.rIdx == q.wIdxCached {
+	rIdx := q.rIdx
+	if rIdx == q.wIdxCached {
 		q.wIdxCached = atomic.LoadUint64(&q.wIdx)
-		for q.rIdx == q.wIdxCached {
+		for rIdx == q.wIdxCached {
 			runtime.Gosched()
 			q.wIdxCached = atomic.LoadUint64(&q.wIdx)
 		}
 	}
 
-	ret := q.items[q.rIdx]
-	q.Advance()
-	return ret
+	return q.items[rIdx]
 }
 
 // Front is a non-blocking variant of Pop. It returns the oldest element in the queue if the queue
