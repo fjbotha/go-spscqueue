@@ -28,6 +28,12 @@ func New[T any](size uint) *Queue[T] {
 	return &Queue[T]{items: make([]T, size+1)}
 }
 
+func (q *Queue[T]) Fill(f func() T) {
+	for i := 0; i < len(q.items); i++ {
+		q.items[i] = f()
+	}
+}
+
 // Push adds the passed element to the queue. Push will block if the queue is full.
 // Push should be called by the producer.
 func (q *Queue[T]) Push(el T) {
@@ -67,6 +73,35 @@ func (q *Queue[T]) Offer(el T) bool {
 	q.items[q.wIdx] = el
 	atomic.StoreUint64(&q.wIdx, wIdxNext)
 	return true
+}
+
+// Reserve returns the underlying element which the next Push operation will overwrite, i.e. the
+// next open slot at the back of the queue. Data retrieved through Reserve can be made available to
+// the consumer using Commit. The Reserve-Commit pattern can be used to work on the pre-allocated
+// queue items. Subsequent calls to Reserve without a call to Commit will return the same element.
+// Reserve should be called by the producer.
+func (q *Queue[T]) Reserve() T {
+	return q.items[q.wIdx]
+}
+
+// Commit advances the back of the queue. Commit can be used in conjunction with Reserve to work on
+// the underlying queue data and present them to the consumer.
+// Commit should be called by the producer.
+func (q *Queue[T]) Commit() {
+	wIdxNext := q.wIdx + 1
+	if wIdxNext == uint64(len(q.items)) {
+		wIdxNext = 0
+	}
+
+	// Wait if we ran into the consumer.
+	if wIdxNext == q.rIdxCached {
+		q.rIdxCached = atomic.LoadUint64(&q.rIdx)
+		for wIdxNext == q.rIdxCached {
+			runtime.Gosched()
+			q.rIdxCached = atomic.LoadUint64(&q.rIdx)
+		}
+	}
+	atomic.StoreUint64(&q.wIdx, wIdxNext)
 }
 
 // Pop returns the oldest element in the queue and removes it. Pop will block if no element is
