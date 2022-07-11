@@ -1,9 +1,10 @@
 package spscqueue
 
 import (
-	"golang.org/x/sys/cpu"
 	"runtime"
 	"sync/atomic"
+
+	"golang.org/x/sys/cpu"
 )
 
 // Queue is the structure responsible for tracking the state of the bounded single-producer
@@ -80,8 +81,22 @@ func (q *Queue[T]) Offer(el T) bool {
 // the consumer using Commit. The Reserve-Commit pattern can be used to work on the pre-allocated
 // queue items. Subsequent calls to Reserve without a call to Commit will return the same element.
 // Reserve should be called by the producer.
-func (q *Queue[T]) Reserve() T {
-	return q.items[q.wIdx]
+func (q *Queue[T]) Reserve() (T, bool) {
+	wIdxNext := q.wIdx + 1
+	if wIdxNext == uint64(len(q.items)) {
+		wIdxNext = 0
+	}
+
+	// Check if we ran into the consumer.
+	if wIdxNext == q.rIdxCached {
+		q.rIdxCached = atomic.LoadUint64(&q.rIdx)
+		if wIdxNext == q.rIdxCached {
+			var ret T
+			return ret, false
+		}
+	}
+
+	return q.items[q.wIdx], true
 }
 
 // Commit advances the back of the queue. Commit can be used in conjunction with Reserve to work on
@@ -91,15 +106,6 @@ func (q *Queue[T]) Commit() {
 	wIdxNext := q.wIdx + 1
 	if wIdxNext == uint64(len(q.items)) {
 		wIdxNext = 0
-	}
-
-	// Wait if we ran into the consumer.
-	if wIdxNext == q.rIdxCached {
-		q.rIdxCached = atomic.LoadUint64(&q.rIdx)
-		for wIdxNext == q.rIdxCached {
-			runtime.Gosched()
-			q.rIdxCached = atomic.LoadUint64(&q.rIdx)
-		}
 	}
 	atomic.StoreUint64(&q.wIdx, wIdxNext)
 }
