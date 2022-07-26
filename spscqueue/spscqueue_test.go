@@ -190,6 +190,44 @@ func TestString(t *testing.T) {
 	wg.Wait()
 }
 
+// SPSC test for the Reserve-Commit pattern.
+func TestReserveCommitSPSC(t *testing.T) {
+	const numItems = 10000
+	q := New[*int](64)
+	wg := sync.WaitGroup{}
+
+	{
+		// Allocate the underlying queue storage.
+		q.Fill(func() *int { var v int; return &v })
+	}
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		for i := 0; i < numItems; i++ {
+			v, ok := q.Reserve()
+			for !ok {
+				v, ok = q.Reserve()
+			}
+			*v = i
+			q.Commit()
+		}
+	}(&wg)
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		for i := 0; i < numItems; i++ {
+			v := q.Pop()
+			if *v != i {
+				t.Errorf("Got incorrect value; %v != %v", *v, i)
+			}
+		}
+	}(&wg)
+
+	wg.Wait()
+}
+
 // Single threaded benchmark; not the primary usecase.
 func BenchmarkPushPop(b *testing.B) {
 	q := New[int](1)
