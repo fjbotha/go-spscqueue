@@ -1,10 +1,7 @@
 ## go-spscqueue
 
 This repository contains a type generic single-producer single-consumer bounded queue go package.
-The implementation is based on go's generic capabilities aimed for go version 1.18.
-
-> Beware that go's generics infrastructure is not yet stable. This was tested with
-`go version go1.18rc1 linux/amd64`.
+The implementation is based on go's generic capabilities introduced in go version 1.18.
 
 The algorithm is similar to the C++ implementation described [here](https://rigtorp.se/ringbuffer/) (and available [here](https://github.com/rigtorp/SPSCQueue)).
 It is lock-free and tries to be cache-friendly.
@@ -26,6 +23,19 @@ if ok {
 	q.Advance() // Remove the item at the front of the queue.
 }
 fmt.Println(q.Len())
+
+// There is also a Reserve-Commit pattern, which allows the producer to access
+// the underlying queue data. This is potentially useful when working on
+// pre-allocated data.
+v3, ok := q.Reserve() // Work on the underlying queue data.
+for !ok {
+	runtime.Gosched()
+	v3, ok = q.Reserve()
+}
+// Do something with v3.
+// ...
+q.Commit() // Present the element to the consumer.
+
 ```
 
 The combination of `Front()` and `Advance()` achieves the same as `Pop()`. Using them allows for
