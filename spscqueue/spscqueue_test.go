@@ -54,8 +54,8 @@ func TestLength(t *testing.T) {
 	}
 }
 
-// Single threaded test.
-func TestPushPop(t *testing.T) {
+// Simple single threaded test.
+func TestPushPopSimple(t *testing.T) {
 	q := New[int](8)
 
 	for i := 0; i < 8; i++ {
@@ -95,7 +95,7 @@ func TestPushPop(t *testing.T) {
 }
 
 // SPSC test.
-func TestPushPopSPSC(t *testing.T) {
+func TestPushPop(t *testing.T) {
 	const numItems = 10000
 	q := New[int](64)
 	wg := sync.WaitGroup{}
@@ -122,7 +122,8 @@ func TestPushPopSPSC(t *testing.T) {
 	wg.Wait()
 }
 
-func TestOfferPeekAdvanceSPSC(t *testing.T) {
+// Test for the Offer-Peek-Advance usage pattern.
+func TestOfferPeekAdvance(t *testing.T) {
 	q := New[int](0)
 
 	if q.Offer(1) == true {
@@ -162,36 +163,8 @@ func TestOfferPeekAdvanceSPSC(t *testing.T) {
 	wg.Wait()
 }
 
-// SPSC test for a string type.
-func TestString(t *testing.T) {
-	const numItems = 10000
-	q := New[string](64)
-	wg := sync.WaitGroup{}
-
-	wg.Add(1)
-	go func(wg *sync.WaitGroup) {
-		defer wg.Done()
-		for i := 0; i < numItems; i++ {
-			q.Push(strconv.Itoa(i))
-		}
-	}(&wg)
-
-	wg.Add(1)
-	go func(wg *sync.WaitGroup) {
-		defer wg.Done()
-		for i := 0; i < numItems; i++ {
-			v := q.Pop()
-			if v != strconv.Itoa(i) {
-				t.Errorf("Got incorrect value; %v != %v", v, i)
-			}
-		}
-	}(&wg)
-
-	wg.Wait()
-}
-
-// SPSC test for the Reserve-Commit pattern.
-func TestReserveCommitSPSC(t *testing.T) {
+// Test for the Reserve-Commit pattern.
+func TestReserveCommit(t *testing.T) {
 	const numItems = 10000
 	q := New[*int](64)
 	wg := sync.WaitGroup{}
@@ -228,8 +201,36 @@ func TestReserveCommitSPSC(t *testing.T) {
 	wg.Wait()
 }
 
+// Test for a string type.
+func TestString(t *testing.T) {
+	const numItems = 10000
+	q := New[string](64)
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		for i := 0; i < numItems; i++ {
+			q.Push(strconv.Itoa(i))
+		}
+	}(&wg)
+
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		for i := 0; i < numItems; i++ {
+			v := q.Pop()
+			if v != strconv.Itoa(i) {
+				t.Errorf("Got incorrect value; %v != %v", v, i)
+			}
+		}
+	}(&wg)
+
+	wg.Wait()
+}
+
 // Single threaded benchmark; not the primary usecase.
-func BenchmarkPushPop(b *testing.B) {
+func BenchmarkPushPopSingleThread(b *testing.B) {
 	q := New[int](1)
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -239,19 +240,8 @@ func BenchmarkPushPop(b *testing.B) {
 	}
 }
 
-// Channel reference single threaded benchmark.
-func BenchmarkChannelPushPop(b *testing.B) {
-	q := make(chan int, 1)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		q <- i
-		_ = <-q
-	}
-}
-
 // SPSC benchmark.
-func BenchmarkPushPopSPSC(b *testing.B) {
+func BenchmarkPushPop(b *testing.B) {
 	q := New[int](1024)
 	start := make(chan struct{})
 	wg := sync.WaitGroup{}
@@ -285,8 +275,8 @@ func BenchmarkPushPopSPSC(b *testing.B) {
 	wg.Wait()
 }
 
-// SPSC benchmark.
-func BenchmarkOfferPeekAdvanceSPSC(b *testing.B) {
+// Benchmark for the Offer-Peek-Advance usage pattern.
+func BenchmarkOfferPeekAdvance(b *testing.B) {
 	q := New[int](1024)
 	start := make(chan struct{})
 	wg := sync.WaitGroup{}
@@ -325,6 +315,17 @@ func BenchmarkOfferPeekAdvanceSPSC(b *testing.B) {
 	close(start)
 
 	wg.Wait()
+}
+
+// Channel reference single threaded benchmark.
+func BenchmarkChannelPushPopSingleThread(b *testing.B) {
+	q := make(chan int, 1)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		q <- i
+		_ = <-q
+	}
 }
 
 // Channel reference SPSC benchmark.
